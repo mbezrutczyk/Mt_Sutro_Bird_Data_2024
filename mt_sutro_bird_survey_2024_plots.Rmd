@@ -1,0 +1,473 @@
+---
+title: "Mt Sutro Bird Survey Plots"
+output: html_notebook
+---
+
+```{r}
+## To get started, change this to wherever 'data' folder is:
+
+setwd("/Users/margot_bezrutczyk/Documents/mt_sutro_data") 
+
+library(tidyverse)
+library(dplyr)
+library(lubridate)
+library(vegan)
+
+```
+
+```{r}
+
+## Figure 2. Total Species Count by year ##
+
+species_year <-read.csv("data/species_year.csv")
+
+# Create the histogram
+ggplot(species_year, aes(x = factor(year), y = `total.species`)) +
+  geom_bar(stat = "identity", fill = "skyblue", color = "black") + # Create histogram bars
+  geom_text(aes(label = `total.species`), vjust = -0.5, size = 4) + # Add labels to bars
+  labs(
+    title = "Total Species Count by Year",
+    x = "Year",
+    y = "Total Species"
+  ) +
+  theme_minimal() # Use a minimal theme 
+```
+
+```{r}
+## Figure 3. Histogram Total Species by year and plot ##
+
+sp_viewshed_year <- read.csv("data/mt_sutro_data_copy_sp_plot_year.csv")
+
+ggplot(sp_viewshed_year, aes(x = Year, y = count, fill = as.factor(viewshed))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    title = "Histogram of Count by Plot and Year",
+    x = "Year",
+    y = "Species Count",
+    fill = "Plot"
+  ) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + # Rotate x-axis labels
+  scale_x_continuous(breaks = unique(sp_viewshed_year$Year)) # Ensure all years are shown
+
+```
+
+```{r}
+## Figure 4. Histogram Total Species by month  ## 
+
+totals_by_month <- read.csv("data/totals_by_month.csv")
+
+# Step 1: Ensure the month_name column is ordered chronologically (January to December)
+totals_by_month$month <- factor(
+  totals_by_month$month, 
+  levels = month.name  # Use built-in month.name to specify the correct order
+)
+
+# Step 2: Plot with faceting by Plot (Viewshed) and x-axis ordered by month
+ggplot(totals_by_month, aes(x = month, y = Count, fill = as.factor(month))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ Plot) +  # Remove scales = "free_y" to use the same y-axis across all plots
+  labs(
+    title = "Total Species in Each Plot by Month",
+    x = "Month",
+    y = "Species Count"
+  ) +
+  theme_minimal() + 
+  theme(
+    axis.text.x = element_blank(),  # Remove x-axis labels
+    legend.title = element_blank(),  # Remove legend title
+    strip.text = element_text(size = 10)  # Adjust facet label size
+  )
+
+```
+
+```{r}
+
+## not used in report ##
+
+historical_2024_comparison <- read.csv("data/species_comparison_by_month.csv")
+species_by_month_comparison <- historical_2024_comparison
+
+# Ensure `month_name` is ordered chronologically as a factor
+species_by_month_comparison$month_name <- factor(
+  species_by_month_comparison$month_name,
+  levels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+)
+
+# Create the plot
+ggplot(species_by_month_comparison, aes(x = month_name)) +
+  # Histogram for 'prev_years' with error bars
+  geom_bar(
+    data = filter(species_by_month_comparison, year == "prev_years"),
+    aes(y = total),
+    stat = "identity",
+    fill = "skyblue",
+    alpha = 0.8
+  ) +
+  geom_errorbar(
+    data = filter(species_by_month_comparison, year == "prev_years"),
+    aes(ymin = total - SEM, ymax = total + SEM),
+    width = 0.2
+  ) +
+  # Overlay points and line for 2024
+  geom_point(
+    data = filter(species_by_month_comparison, year == "2024"),
+    aes(y = total),
+    color = "red",
+    size = 3
+  ) +
+  geom_line(
+    data = filter(species_by_month_comparison, year == "2024"),
+    aes(y = total, group = 1),
+    color = "red",
+    size = 1
+  ) +
+  # Add labels and customize the theme
+  scale_fill_manual(values = c("2019-2023 avg" = "skyblue")) +
+  scale_color_manual(values = c("2024" = "red")) +
+  labs(
+    title = "Total Species by Month, Historical vs 2024",
+    x = "Month",
+    y = "Total",
+    fill = "", # Legend title for bars
+    color = "" # Legend title for dots and line
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1) # Rotate x-axis labels for readability
+  )
+```
+
+
+
+```{r}
+## Figures 5 and 6 ## 
+
+#to calculate Shannon Diversity Index for each plot
+diversity<-read.csv("data/diversity.csv")
+
+# Replace missing or empty values with 0 in species abundance columns
+diversity <- diversity %>%
+  replace(is.na(.), 0)   # Replace NA values with 0
+
+# Step 1: Group the data by Plot and Date, then calculate Shannon diversity for each group
+shannon_long <- diversity %>%
+  group_by(Plot, Date) %>%
+  summarise(
+    Shannon_Diversity = diversity(across(ALHU:ZONO, sum, na.rm = TRUE), index = "shannon"),
+    .groups = "drop"
+  )
+
+# Step 2: Pivot the long-format data to wide format
+shannon_2024 <- shannon_long %>%
+  pivot_wider(names_from = Date, values_from = Shannon_Diversity)
+
+# Step 3: Include the original Plot column explicitly
+shannon_2024 <- shannon_2024 %>%
+  mutate(Plot = diversity$Plot[match(Plot, diversity$Plot)])
+
+# Step 4: Reorder columns so that "Plot" is the first column
+shannon_2024 <- shannon_2024 %>%
+  relocate(Plot, .before = everything())
+
+# Step 5: View the resulting dataframe
+print(shannon_2024)
+
+write.csv(shannon_2024, "data/shannon_2024.csv")
+```
+```{r}
+#to calculate Shannon Diversity Index for each plot
+diversity_2023<-read.csv("data/diversity_2023.csv")
+
+# Replace missing or empty values with 0 in species abundance columns
+diversity_2023 <- diversity_2023 %>%
+  replace(is.na(.), 0)   # Replace NA values with 0
+
+# Step 1: Group the data by Plot and Date, then calculate Shannon diversity for each group
+shannon_long_2023 <- diversity_2023 %>%
+  group_by(Plot, Date) %>%
+  summarise(
+    Shannon_Diversity = diversity(across(ALHU:YRWA, sum, na.rm = TRUE), index = "shannon"),
+    .groups = "drop"
+  )
+
+# Step 2: Pivot the long-format data to wide format
+shannon_2023 <- shannon_long_2023 %>%
+  pivot_wider(names_from = Date, values_from = Shannon_Diversity)
+
+# Step 3: Include the original Plot column explicitly
+shannon_2023 <- shannon_2023 %>%
+  mutate(Plot = diversity$Plot[match(Plot, diversity$Plot)])
+
+# Step 4: Reorder columns so that "Plot" is the first column
+shannon_2023 <- shannon_2023 %>%
+  relocate(Plot, .before = everything())
+
+# Step 5: View the resulting dataframe
+print(shannon_2023)
+
+write.csv(shannon_2023, "data/shannon_2023.csv")
+
+#### 2022 ####
+
+#to calculate Shannon Diversity Index for each plot
+diversity_2022<-read.csv("data/diversity_2022.csv")
+
+# Replace missing or empty values with 0 in species abundance columns
+diversity_2022 <- diversity_2022 %>%
+  replace(is.na(.), 0)   # Replace NA values with 0
+
+# Step 1: Group the data by Plot and Date, then calculate Shannon diversity for each group
+shannon_long_2022 <- diversity_2022 %>%
+  group_by(Plot, Date) %>%
+  summarise(
+    Shannon_Diversity = diversity(across(ALHU:YRWA, sum, na.rm = TRUE), index = "shannon"),
+    .groups = "drop"
+  )
+
+# Step 2: Pivot the long-format data to wide format
+shannon_2022 <- shannon_long_2022 %>%
+  pivot_wider(names_from = Date, values_from = Shannon_Diversity)
+
+# Step 3: Include the original Plot column explicitly
+shannon_2022 <- shannon_2022 %>%
+  mutate(Plot = diversity$Plot[match(Plot, diversity$Plot)])
+
+# Step 4: Reorder columns so that "Plot" is the first column
+shannon_2022 <- shannon_2022 %>%
+  relocate(Plot, .before = everything())
+
+# Step 5: View the resulting dataframe
+print(shannon_2022)
+
+write.csv(shannon_2022, "data/shannon_2022.csv")
+
+#### 2021 ####
+
+#to calculate Shannon Diversity Index for each plot
+diversity_2021<-read.csv("data/diversity_2021.csv")
+
+# Replace missing or empty values with 0 in species abundance columns
+diversity_2021 <- diversity_2021 %>%
+  replace(is.na(.), 0)   # Replace NA values with 0
+
+# Step 1: Group the data by Plot and Date, then calculate Shannon diversity for each group
+shannon_long_2021 <- diversity_2021 %>%
+  group_by(Plot, Date) %>%
+  summarise(
+    Shannon_Diversity = diversity(across(ALHU:YRWA, sum, na.rm = TRUE), index = "shannon"),
+    .groups = "drop"
+  )
+
+# Step 2: Pivot the long-format data to wide format
+shannon_2021 <- shannon_long_2021 %>%
+  pivot_wider(names_from = Date, values_from = Shannon_Diversity)
+
+# Step 3: Include the original Plot column explicitly
+shannon_2021 <- shannon_2021 %>%
+  mutate(Plot = diversity$Plot[match(Plot, diversity$Plot)])
+
+# Step 4: Reorder columns so that "Plot" is the first column
+shannon_2021 <- shannon_2021 %>%
+  relocate(Plot, .before = everything())
+
+# Step 5: View the resulting dataframe
+print(shannon_2021)
+
+write.csv(shannon_2021, "data/shannon_2021.csv")
+
+#### 2020 ####
+
+#to calculate Shannon Diversity Index for each plot
+diversity_2020<-read.csv("data/diversity_2020.csv")
+
+# Replace missing or empty values with 0 in species abundance columns
+diversity_2020 <- diversity_2020 %>%
+  replace(is.na(.), 0)   # Replace NA values with 0
+
+# Step 1: Group the data by Plot and Date, then calculate Shannon diversity for each group
+shannon_long_2020 <- diversity_2020 %>%
+  group_by(Plot, Date) %>%
+  summarise(
+    Shannon_Diversity = diversity(across(ACWO:YRWA, sum, na.rm = TRUE), index = "shannon"),
+    .groups = "drop"
+  )
+
+# Step 2: Pivot the long-format data to wide format
+shannon_2020 <- shannon_long_2020 %>%
+  pivot_wider(names_from = Date, values_from = Shannon_Diversity)
+
+# Step 3: Include the original Plot column explicitly
+shannon_2020 <- shannon_2020 %>%
+  mutate(Plot = diversity$Plot[match(Plot, diversity$Plot)])
+
+# Step 4: Reorder columns so that "Plot" is the first column
+shannon_2020 <- shannon_2020 %>%
+  relocate(Plot, .before = everything())
+
+# Step 5: View the resulting dataframe
+print(shannon_2020)
+
+write.csv(shannon_2020, "data/shannon_2020.csv")
+
+#### 2019 ####
+
+#to calculate Shannon Diversity Index for each plot
+diversity_2019<-read.csv("data/diversity_2019.csv")
+
+# Replace missing or empty values with 0 in species abundance columns
+diversity_2019 <- diversity_2019 %>%
+  replace(is.na(.), 0)   # Replace NA values with 0
+
+# Step 1: Group the data by Plot and Date, then calculate Shannon diversity for each group
+shannon_long_2019 <- diversity_2019 %>%
+  group_by(Plot, Date) %>%
+  summarise(
+    Shannon_Diversity = diversity(across(ALHU:YRWA, sum, na.rm = TRUE), index = "shannon"),
+    .groups = "drop"
+  )
+
+# Step 2: Pivot the long-format data to wide format
+shannon_2019 <- shannon_long_2019 %>%
+  pivot_wider(names_from = Date, values_from = Shannon_Diversity)
+
+# Step 3: Include the original Plot column explicitly
+shannon_2019 <- shannon_2019 %>%
+  mutate(Plot = diversity$Plot[match(Plot, diversity$Plot)])
+
+# Step 4: Reorder columns so that "Plot" is the first column
+shannon_2019 <- shannon_2019 %>%
+  relocate(Plot, .before = everything())
+
+# Step 5: View the resulting dataframe
+print(shannon_2019)
+
+write.csv(shannon_2019, "data/shannon_2019.csv")
+
+
+
+```
+
+
+
+```{r}
+
+## Figure 5. Diversity by Plot ## 
+
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+
+# Ensure your 'shannon_long' dataframe is loaded
+write.csv(shannon_long, "data/shannon_long.csv")
+
+# Step 1: Fix the Date column to ensure consistent mm/dd/yyyy format
+shannon_long <- shannon_long %>%
+  mutate(Date = mdy(Date)) # Parse the dates and fix the format
+
+# Step 2: Reformat the Date column back to mm/dd/yyyy (character format)
+shannon_long <- shannon_long %>%
+  mutate(Date = format(Date, "%m/%d/%Y"))
+
+# Step 3: Calculate the average Shannon diversity for each Plot and order them
+ordered_plots <- shannon_long %>%
+  group_by(Plot) %>%
+  summarise(mean_diversity = mean(Shannon_Diversity, na.rm = TRUE)) %>%
+  arrange(desc(mean_diversity)) %>%
+  pull(Plot)
+
+# Step 4: Create the dotplot
+ggplot(shannon_long, aes(x = factor(Plot, levels = ordered_plots), 
+                         y = Shannon_Diversity, 
+                         color = Date)) +
+  geom_point(size = 3) + # Adjust dot size if needed
+  labs(title = "Diversity by Plot, 2024",
+       x = "Plot",
+       y = "Shannon Diversity") +
+  theme_minimal() + # Use a clean theme
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) # Adjust text for readability
+```
+
+
+```{r}
+
+## Figure 6 was created in google sheets, but this plot outputs the results for 2024 ##
+
+# Step 2: Calculate the average Shannon diversity for each date
+average_shannon <- shannon_long %>%
+  group_by(Date) %>%
+  summarise(Average_Diversity = mean(Shannon_Diversity, na.rm = TRUE))
+
+# Step 3: Ensure the Date column is treated as a factor to preserve the order
+average_shannon$Date <- factor(average_shannon$Date, levels = unique(average_shannon$Date))
+
+# Step 4: Create the plot of average Shannon diversity across dates
+ggplot(average_shannon, aes(x = Date, y = Average_Diversity)) +
+  geom_line(group = 1, color = "blue", size = 1) +  # Add a line connecting the averages
+  geom_point(color = "red", size = 3) +            # Add points for individual averages
+  labs(
+    title = "Average Shannon Diversity Across Dates",
+    x = "Date",
+    y = "Average Shannon Diversity"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)  # Rotate x-axis labels for readability
+  )
+```
+
+
+
+```{r}
+
+## Figure 7. All breeding 2024 vs Historical, sorted ##
+
+all_breeding<-read.csv("data/all_breeding.csv")
+plot_data <-all_breeding
+
+# Reorder the 'Plot' factor based on 'historical_avg' in descending order
+plot_data <- plot_data %>%
+  mutate(Plot = reorder(Plot, -historical_avg))
+
+# Create the plot
+ggplot() +
+  # Histogram for 'historical_avg' with error bars
+  geom_bar(
+    data = plot_data,
+    aes(x = Plot, y = historical_avg),
+    stat = "identity",
+    fill = "skyblue",
+    alpha = 0.8
+  ) +
+  geom_errorbar(
+    data = plot_data,
+    aes(x = Plot, ymin = historical_avg - historical_SEM, ymax = historical_avg + historical_SEM),
+    width = 0.2
+  ) +
+  # Overlay points and line for 2024
+  geom_point(
+    data = plot_data,
+    aes(x = Plot, y = `year_2024`),
+    color = "red",
+    size = 3
+  ) +
+  geom_line(
+    data = plot_data,
+    aes(x = Plot, y = `year_2024`, group = 1),
+    color = "red",
+    size = 1
+  ) +
+  # Add labels and customize the theme
+  labs(
+    title = "Breeding (Sorted by Historical Average)",
+    x = "Plot",
+    y = "Number of Species"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1), # Rotate x-axis labels for readability
+    legend.position = "none"                          # No legend needed
+  )
+```
